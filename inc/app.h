@@ -30,6 +30,9 @@ extern "C" {
 /// Duracion del LED de error en caso de no tener respuesta por UART en ms.
 #define APP_ERROR_ONTIME        500
 
+/// Tiempo de actualizacion del acelerometro en ms.
+#define APP_ACCEL_TASK_PERIOD   1000
+
 /// Canal del ADC a muestrear.
 #define APP_ADC_CHANNEL         ADC_CH2
 /// Periodo minimo de muestreo (Ts = APP_ADC_MIN_RATE + 1).
@@ -74,10 +77,16 @@ typedef struct _app_type
     // Indicacion de espera de respuesta por UART
     SemaphoreHandle_t   semaphore_reply;
 
+    // Para la tarea que envia datos por la UART
+    float               accel[3];
+
     // Para la tarea del ADC
     buffer_queue        data_queue;
     unsigned            samples_in_buffer;
     uint8_t*            current_buffer;
+
+    // FIFO para los nuevos valores leidos del MPU
+    QueueHandle_t       queue_mpu;
 }
 app_type;
 

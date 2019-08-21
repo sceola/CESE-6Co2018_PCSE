@@ -5,19 +5,22 @@
  * Version: 0.0.1
  *===========================================================================*/
 
-#ifndef __MESSAGES_H__
-#define __MESSAGES_H__
+#ifndef __MPY_H__
+#define __MPY_H__
 
-
-#define MESSAGES_QUEUE_SIZE 64
-#define MESSAGES_QUEUE_NMBR 16
-
-
-void messages_init( int priority );
-void messages_print( const char* msg );
-
+#include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
+#endif
+
+
+int  mpu_init( void );
+void mpu_get_accelerometer( float accel[3] );
+
+
+#ifdef __cplusplus
+}
 #endif
 #endif

@@ -27,7 +27,7 @@ void vTaskMessages( void *pParam )
     }
 }
 
-void messages_init( void )
+void messages_init( int priority )
 {
     s__queueMessages = xQueueCreate(MESSAGES_QUEUE_NMBR, MESSAGES_QUEUE_SIZE);
 
@@ -35,7 +35,7 @@ void messages_init( void )
                  (const char*) "Task Messages",
                  configMINIMAL_STACK_SIZE*2,
                  NULL,
-                 tskIDLE_PRIORITY+4,
+                 priority,
                  NULL );
 }
 

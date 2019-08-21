@@ -6,6 +6,7 @@
 #include "app.h"
 #include "adc.h"
 #include "uart.h"
+#include "mpu.h"
 #include "messages.h"
 
 
@@ -55,20 +56,37 @@ void vTaskConfig( void *pParam );
  */
 void vTaskError( void *pParam );
 
+/**
+ * Esta tarea lee los valores del MPU cada APP_ACCEL_TASK_PERIOD milisegundos
+ * y los manda a una FIFO.  Despues la tarea principal de la aplicacion (la que
+ * envia por UART) lee esto y lo usa para modificar las muestras del ADC por
+ * enviar.
+ */
+void vTaskMPU( void *pParam );
+
 
 void app_update( app_type* app )
 {
-	// Pedimos un buffer lleno con muestras del ADC.
-	// El timeout esta por si las dudas, si las cosas andan bien y no le paso
-	// nada raro a la tarea del ADC siempre vamos a tener datos para procesar.
+    // Primero vemos si hay que actualizar los parametros del accelerometro.
+    float new_accel[3];
+    if (xQueueReceive(app->queue_mpu, new_accel, 0) == pdPASS)
+    {
+        app->accel[0] = new_accel[0];
+        app->accel[1] = new_accel[1];
+        app->accel[2] = new_accel[2];
+    }
 
+    // Pedimos un buffer lleno con muestras del ADC.
+    // El timeout esta por si las dudas, si las cosas andan bien y no le paso
+    // nada raro a la tarea del ADC siempre vamos a tener datos para procesar.
     const TickType_t timeout = pdMS_TO_TICKS(1000UL * DBG_PERIOD_MULTIPLIER);
     uint8_t* buf = buffer_queue_get_inuse(&app->data_queue, timeout);
 
     if (buf != NULL)
     {
+        float mult = app->accel[0];
         //for (unsigned i = 0; i < APP_DATA_BUF_SIZE; ++i)
-        //    uart_write(buf[i]);
+        //    uart_write(buf[i] * mult);
         buffer_queue_return(&app->data_queue, buf);
 
         const TickType_t uart_timeout = pdMS_TO_TICKS(APP_UART_TIMEOUT);
@@ -130,7 +148,7 @@ void uart_update( app_type* app )
     uint8_t data;
     if (uart_read(&data))
     {
-		// Indicamos a vTaskApp que esta todo bien.
+        // Indicamos a vTaskApp que esta todo bien.
         xSemaphoreGive(app->semaphore_reply);
     }
 }
@@ -145,15 +163,15 @@ void buttons_update( app_type* app )
 
 void config_update( app_type* app )
 {
-	int modify_sample_rate = 0;
+    int modify_sample_rate = 0;
 
-	// Bajar la frecuencia de muestreo.
+    // Bajar la frecuencia de muestreo.
     if (debouncer_is_edge(&app->button_left))
     {
         if (debouncer_is_hi(&app->button_left))
         {
             Board_LED_Set(LED_3, 0);
-			modify_sample_rate = -1;
+            modify_sample_rate = -1;
         }
         else
         {
@@ -161,13 +179,13 @@ void config_update( app_type* app )
         }
     }
 
-	// Aumentar la frecuencia de muestreo.
+    // Aumentar la frecuencia de muestreo.
     if (debouncer_is_edge(&app->button_right))
     {
         if (debouncer_is_hi(&app->button_right))
         {
             Board_LED_Set(LED_3, 0);
-			modify_sample_rate = 1;
+            modify_sample_rate = 1;
         }
         else
         {
@@ -175,43 +193,47 @@ void config_update( app_type* app )
         }
     }
 
-	if (modify_sample_rate != 0)
-	{
-		if (modify_sample_rate > 0 && app->config.sample_period < APP_ADC_MAX_RATE)
-			app->config.sample_period++;
-		if (modify_sample_rate < 0 && app->config.sample_period > APP_ADC_MIN_RATE)
-			app->config.sample_period--;
+    if (modify_sample_rate != 0)
+    {
+        if (modify_sample_rate > 0 && app->config.sample_period < APP_ADC_MAX_RATE)
+            app->config.sample_period++;
+        if (modify_sample_rate < 0 && app->config.sample_period > APP_ADC_MIN_RATE)
+            app->config.sample_period--;
 
-		// Escribir la nueva config en la SD.
+        // Escribir la nueva config en la SD.
         if (app->config_sd_present)
         {
             if (config_write(APP_SD_CONFIG_FILENAME, &app->config) < 0)
                 messages_print("ERROR: escribir el archivo de configuracion\n\r");
         }
 
-		xSemaphoreGive(app->semaphore_config);
-	}
+        xSemaphoreGive(app->semaphore_config);
+    }
 }
 
 void app_init( app_type* app )
 {
     Board_Init();
     
-	// Periodo de muestreo al maximo.
+    // Periodo de muestreo al maximo y el acelerometro en 0
     app->config.sample_period = 0;
+    app->accel[0] = 0.0;
+    app->accel[1] = 0.0;
+    app->accel[2] = 0.0;
 
-	// Inicializamos los semaforos.
+    // Inicializamos los semaforos y listas.
     app->semaphore_config = xSemaphoreCreateBinary();
     app->semaphore_error  = xSemaphoreCreateBinary();
     app->semaphore_reply  = xSemaphoreCreateBinary();
+    app->queue_mpu        = xQueueCreate(1, sizeof(float[3]));
 
-	// Inicializamos la lista de buffers.
+    // Inicializamos la lista de buffers.
     buffer_queue_init( &app->data_queue,
                        buffer_queue_mem,
                        APP_DATA_BUF_SIZE,
                        APP_DATA_BUF_NMBR );
 
-	// Iniciamos todas las tareas, estan ordenadas por prioridad.
+    // Iniciamos todas las tareas, estan ordenadas por prioridad.
     xTaskCreate( vTaskADC,
                  (const char*) "Task ADC",
                  configMINIMAL_STACK_SIZE,
@@ -247,7 +269,14 @@ void app_init( app_type* app )
                  tskIDLE_PRIORITY+3,
                  NULL );
 
-    messages_init();
+    xTaskCreate( vTaskMPU,
+                 (const char*) "Task MPU",
+                 configMINIMAL_STACK_SIZE,
+                 app,
+                 tskIDLE_PRIORITY+4,
+                 NULL );
+
+    messages_init( tskIDLE_PRIORITY+5 );
 }
 
 
@@ -311,15 +340,15 @@ void vTaskConfig( void *pParam )
     debouncer_init(&pApp->button_up,    2, APP_BUTTON_PIN_UP   );
     debouncer_init(&pApp->button_down,  2, APP_BUTTON_PIN_DOWN );
 
-	Board_LED_Set(LED_2, 1);
+    Board_LED_Set(LED_2, 1);
     pApp->config_sd_present = 1;
-	if (config_init(APP_SD_CONFIG_FILENAME, &pApp->config) < 0)
+    if (config_init(APP_SD_CONFIG_FILENAME, &pApp->config) < 0)
     {
         messages_print("ERROR: FATFS/SD, usando configuracion por defecto.\n\r");
         pApp->config.sample_period = 0;
         pApp->config_sd_present = 0;
     }
-	Board_LED_Set(LED_2, 0);
+    Board_LED_Set(LED_2, 0);
 
     messages_print("Sample period: ");
     char msg[2];
@@ -347,6 +376,22 @@ void vTaskError( void *pParam )
         Board_LED_Set(LED_1, 0);
         xSemaphoreTake(pApp->semaphore_error, portMAX_DELAY);
         Board_LED_Set(LED_1, 1);
+        vTaskDelay(xTaskDelay);
+    }
+}
+
+void vTaskMPU( void *pParam )
+{
+    app_type* pApp = pParam;
+    const TickType_t xTaskDelay = pdMS_TO_TICKS(APP_ACCEL_TASK_PERIOD);
+
+    mpu_init();
+    
+    float accel[3];
+    while (1)
+    {
+        mpu_get_accelerometer(accel);
+        xQueueSendToBack(pApp->queue_mpu, accel, 0);
         vTaskDelay(xTaskDelay);
     }
 }
