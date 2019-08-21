@@ -3,6 +3,7 @@
 #include <fssdc.h>
 
 #include "config.h"
+#include "messages.h"
 
 
 static FATFS    s__fatfs;
@@ -17,7 +18,7 @@ int s__write_config( FIL* fp, const config_data* cfg )
     if (fr != FR_OK)
     {
         // ERROR
-        printf("ERROR: f_write\n\r");
+        messages_print("ERROR: f_write\n\r");
         ret = -1;
     }
     else
@@ -25,7 +26,7 @@ int s__write_config( FIL* fp, const config_data* cfg )
         if (bw != 1)
         {
             // ERROR, no pudo escribir el byte
-            printf("ERROR: f_write &bw\n\r");
+            messages_print("ERROR: f_write &bw\n\r");
             ret = -1;
         }
     }
@@ -43,7 +44,7 @@ int config_init( const char* filename, config_data* cfg )
     if (f_mount(&s__fatfs, "SDC:", 0) != FR_OK)
     {
         // ERROR
-        printf("ERROR: f_mount\n\r");
+        messages_print("ERROR: f_mount\n\r");
     }
     else
     {
@@ -71,14 +72,14 @@ int config_init( const char* filename, config_data* cfg )
                 if (fr != FR_OK)
                 {
                     // ERROR
-                    printf("ERROR: f_read\n\r");
+                    messages_print("ERROR: f_read\n\r");
                 }
                 else
                 {
                     if (bw != 1)
                     {
                         // ERROR, no pudo leer el byte
-                        printf("ERROR: f_read &bw\n\r");
+                        messages_print("ERROR: f_read &bw\n\r");
                     }
                     else
                     {
@@ -86,7 +87,7 @@ int config_init( const char* filename, config_data* cfg )
                         // Se creo el archivo nuevo si no existia y se escribio
                         // la config por defecto.
                         // Se leyo el archivo de configuracion.
-                        printf("CONFIG: FS is UP\n\r");
+                        messages_print("CONFIG: FS is UP\n\r");
                         ret = 0;
                     }
                 }
@@ -95,13 +96,13 @@ int config_init( const char* filename, config_data* cfg )
             else
             {
                 // ERROR
-                printf("ERROR: f_open 2\n\r");
+                messages_print("ERROR: f_open 2\n\r");
             }
         }
         else
         {
             // ERROR
-            printf("ERROR: f_open 1\n\r");
+            messages_print("ERROR: f_open 1\n\r");
         }
     }
     return ret;
@@ -119,7 +120,7 @@ int config_write( const char* filename, const config_data* cfg )
     else
     {
         // ERROR
-        printf("ERROR: config_write open\n\r");
+        messages_print("ERROR: config_write open\n\r");
         ret = -1;
     }
     return ret;

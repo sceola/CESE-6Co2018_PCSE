@@ -6,6 +6,7 @@
 #include "app.h"
 #include "adc.h"
 #include "uart.h"
+#include "messages.h"
 
 
 // DEBUG
@@ -185,7 +186,7 @@ void config_update( app_type* app )
         if (app->config_sd_present)
         {
             if (config_write(APP_SD_CONFIG_FILENAME, &app->config) < 0)
-                printf("ERROR: escribir el archivo de configuracion\n\r");
+                messages_print("ERROR: escribir el archivo de configuracion\n\r");
         }
 
 		xSemaphoreGive(app->semaphore_config);
@@ -245,6 +246,8 @@ void app_init( app_type* app )
                  app,
                  tskIDLE_PRIORITY+3,
                  NULL );
+
+    messages_init();
 }
 
 
@@ -312,13 +315,18 @@ void vTaskConfig( void *pParam )
     pApp->config_sd_present = 1;
 	if (config_init(APP_SD_CONFIG_FILENAME, &pApp->config) < 0)
     {
-        printf("ERROR: FATFS/SD, usando configuracion por defecto.\n\r");
+        messages_print("ERROR: FATFS/SD, usando configuracion por defecto.\n\r");
         pApp->config.sample_period = 0;
         pApp->config_sd_present = 0;
     }
 	Board_LED_Set(LED_2, 0);
 
-    printf("Sample period: %c\n\r", ('0'+pApp->config.sample_period));
+    messages_print("Sample period: ");
+    char msg[2];
+    msg[0] = '0' + pApp->config.sample_period;
+    msg[1] = '\0';
+    messages_print(msg);
+    messages_print("\n\r");
     
     while (1)
     {
