@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "config.h"
 #include "buffer_queue.h"
 #include "debouncing.h"
 
@@ -21,31 +22,34 @@ extern "C" {
 #endif
 
 
+/// Nombre del archivo de configuracion en la SD.
+#define APP_SD_CONFIG_FILENAME  "config.bin"
+
 /// Timeout de espera de respuesta por UART en ms.
-#define APP_UART_TIMEOUT    	250
+#define APP_UART_TIMEOUT        250
 /// Duracion del LED de error en caso de no tener respuesta por UART en ms.
-#define APP_ERROR_ONTIME    	500
+#define APP_ERROR_ONTIME        500
 
 /// Canal del ADC a muestrear.
-#define APP_ADC_CHANNEL     	ADC_CH2
+#define APP_ADC_CHANNEL         ADC_CH2
 /// Periodo minimo de muestreo (Ts = APP_ADC_MIN_RATE + 1).
-#define APP_ADC_MIN_RATE		 0
+#define APP_ADC_MIN_RATE         0
 /// Periodo maximo de muestreo (Ts = APP_ADC_MIN_RATE + 1).
-#define APP_ADC_MAX_RATE		10
+#define APP_ADC_MAX_RATE        10
 
-#define APP_BUTTON_PIN_LEFT 	BOARD_TEC_1	 /// Tecla izquierda
-#define APP_BUTTON_PIN_RIGHT	BOARD_TEC_4	 /// Tecla derecha
-#define APP_BUTTON_PIN_UP   	BOARD_TEC_3	 /// Tecla arriba
-#define APP_BUTTON_PIN_DOWN 	BOARD_TEC_2	 /// Tecla abajo
+#define APP_BUTTON_PIN_LEFT     BOARD_TEC_1  /// Tecla izquierda
+#define APP_BUTTON_PIN_RIGHT    BOARD_TEC_4  /// Tecla derecha
+#define APP_BUTTON_PIN_UP       BOARD_TEC_3  /// Tecla arriba
+#define APP_BUTTON_PIN_DOWN     BOARD_TEC_2  /// Tecla abajo
 
 /// Cuantas muestras del ADC almacenar antes de enviarlas todas por la UART.
-#define APP_DATA_BUF_SIZE   	16
+#define APP_DATA_BUF_SIZE       16
 /**
  * Cuantos buffers se crearan para almacenar muestras del ADC.
  * Estos son los que se utilizaran con buffer_queue para intercambiar datos
  * entre la tarea del ADC y de APP.
  */
-#define APP_DATA_BUF_NMBR   	 8
+#define APP_DATA_BUF_NMBR        8
 
 
 /**
@@ -55,24 +59,25 @@ extern "C" {
  */
 typedef struct _app_type
 {
-	// Teclas
-    debouncer_type 		button_left;
-    debouncer_type 		button_right;
-    debouncer_type 		button_up;
-    debouncer_type 		button_down;
-	SemaphoreHandle_t	semaphore_config; // Para indicar que hay una configuracion nueva
+    // Para la tarea de configuracion
+    debouncer_type      button_left;
+    debouncer_type      button_right;
+    debouncer_type      button_up;
+    debouncer_type      button_down;
+    SemaphoreHandle_t   semaphore_config; // Para indicar que hay una configuracion nueva
+    config_data         config;
+    bool                config_sd_present;
 
-	// Indicacion de error para LED
-	SemaphoreHandle_t	semaphore_error;
+    // Indicacion de error para LED
+    SemaphoreHandle_t   semaphore_error;
 
-	// Indicacion de espera de respuesta por UART
-	SemaphoreHandle_t	semaphore_reply;
+    // Indicacion de espera de respuesta por UART
+    SemaphoreHandle_t   semaphore_reply;
 
     // Para la tarea del ADC
-    unsigned        	sample_period; // En ticks, se utiliza este valor +1. O sea, para muestrear cada 1 tick ponerlo en 0
-    buffer_queue    	data_queue;
-    unsigned        	samples_in_buffer;
-    uint8_t*        	current_buffer;
+    buffer_queue        data_queue;
+    unsigned            samples_in_buffer;
+    uint8_t*            current_buffer;
 }
 app_type;
 

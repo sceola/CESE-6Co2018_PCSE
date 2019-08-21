@@ -9,14 +9,16 @@ static FATFS    s__fatfs;
 static FIL      s__fp;
 
 
-void s__write_config( FIL* fp, const config_data* cfg )
+int s__write_config( FIL* fp, const config_data* cfg )
 {
+    int ret = 0;
     UINT bw;
     FRESULT fr = f_write(&s__fp, &cfg->sample_period, 1, &bw);
     if (fr != FR_OK)
     {
         // ERROR
         printf("ERROR: f_write\n\r");
+        ret = -1;
     }
     else
     {
@@ -24,8 +26,10 @@ void s__write_config( FIL* fp, const config_data* cfg )
         {
             // ERROR, no pudo escribir el byte
             printf("ERROR: f_write &bw\n\r");
+            ret = -1;
         }
     }
+    return ret;
 }
 
 
@@ -103,17 +107,20 @@ int config_init( const char* filename, config_data* cfg )
     return ret;
 }
 
-void config_write( const char* filename, const config_data* cfg )
+int config_write( const char* filename, const config_data* cfg )
 {
+    int ret = 0;
     FRESULT fr = f_open(&s__fp, filename, FA_WRITE);
     if (fr == FR_OK)
     {
-        s__write_config(&s__fp, cfg);
+        ret = s__write_config(&s__fp, cfg);
         f_close(&s__fp);
     }
     else
     {
         // ERROR
         printf("ERROR: config_write open\n\r");
+        ret = -1;
     }
+    return ret;
 }

@@ -23,8 +23,8 @@ typedef struct _config_data
 config_data;
 
 
-int  config_init( const char* filename, config_data* cfg );
-void config_write( const char* filename, const config_data* cfg );
+int config_init( const char* filename, config_data* cfg );
+int config_write( const char* filename, const config_data* cfg );
 
 #ifdef __cplusplus
 }

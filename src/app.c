@@ -41,11 +41,11 @@ void vTaskADC( void *pParam );
 void vTaskUART( void *pParam );
 
 /**
- * Actualiza el estado de las teclas para eliminar los rebotes.  En caso de
- * algun evento indica con un semaforo que hay una nueva configuracion por
- * aplicar.  Por ahora lo unico que hace es cambiar la frecuencia de muestreo.
+ * Anti-rebote de las teclas.  En caso de que haya algun evento guarda la nueva
+ * configuracion en la SD y luego indica con un semaforo que hay que recargar la
+ * config.  Por ahora lo unico que hace es cambiar la frecuencia de muestreo.
  */
-void vTaskButtons( void *pParam );
+void vTaskConfig( void *pParam );
 
 /**
  * Solo se dispara cuando hubo un error de recepcion UART y queda encendida por
@@ -66,8 +66,8 @@ void app_update( app_type* app )
 
     if (buf != NULL)
     {
-        for (unsigned i = 0; i < APP_DATA_BUF_SIZE; ++i)
-            uart_write(buf[i]);
+        //for (unsigned i = 0; i < APP_DATA_BUF_SIZE; ++i)
+        //    uart_write(buf[i]);
         buffer_queue_return(&app->data_queue, buf);
 
         const TickType_t uart_timeout = pdMS_TO_TICKS(APP_UART_TIMEOUT);
@@ -140,6 +140,11 @@ void buttons_update( app_type* app )
     debouncer_update(&app->button_right);
     debouncer_update(&app->button_up   );
     debouncer_update(&app->button_down );
+}
+
+void config_update( app_type* app )
+{
+	int modify_sample_rate = 0;
 
 	// Bajar la frecuencia de muestreo.
     if (debouncer_is_edge(&app->button_left))
@@ -147,11 +152,7 @@ void buttons_update( app_type* app )
         if (debouncer_is_hi(&app->button_left))
         {
             Board_LED_Set(LED_3, 0);
-            if (app->sample_period < APP_ADC_MAX_RATE)
-            {
-                app->sample_period++;
-                xSemaphoreGive(app->semaphore_config);
-            }
+			modify_sample_rate = -1;
         }
         else
         {
@@ -165,17 +166,30 @@ void buttons_update( app_type* app )
         if (debouncer_is_hi(&app->button_right))
         {
             Board_LED_Set(LED_3, 0);
-            if (app->sample_period > APP_ADC_MIN_RATE)
-            {
-                app->sample_period--;
-                xSemaphoreGive(app->semaphore_config);
-            }
+			modify_sample_rate = 1;
         }
         else
         {
             Board_LED_Set(LED_3, 1);
         }
     }
+
+	if (modify_sample_rate != 0)
+	{
+		if (modify_sample_rate > 0 && app->config.sample_period < APP_ADC_MAX_RATE)
+			app->config.sample_period++;
+		if (modify_sample_rate < 0 && app->config.sample_period > APP_ADC_MIN_RATE)
+			app->config.sample_period--;
+
+		// Escribir la nueva config en la SD.
+        if (app->config_sd_present)
+        {
+            if (config_write(APP_SD_CONFIG_FILENAME, &app->config) < 0)
+                printf("ERROR: escribir el archivo de configuracion\n\r");
+        }
+
+		xSemaphoreGive(app->semaphore_config);
+	}
 }
 
 void app_init( app_type* app )
@@ -183,7 +197,7 @@ void app_init( app_type* app )
     Board_Init();
     
 	// Periodo de muestreo al maximo.
-    app->sample_period = 0;
+    app->config.sample_period = 0;
 
 	// Inicializamos los semaforos.
     app->semaphore_config = xSemaphoreCreateBinary();
@@ -218,9 +232,9 @@ void app_init( app_type* app )
                  tskIDLE_PRIORITY+2,
                  NULL );
 
-    xTaskCreate( vTaskButtons,
-                 (const char*) "Task Buttons",
-                 configMINIMAL_STACK_SIZE,
+    xTaskCreate( vTaskConfig,
+                 (const char*) "Task Config",
+                 configMINIMAL_STACK_SIZE*2,
                  app,
                  tskIDLE_PRIORITY+3,
                  NULL );
@@ -247,7 +261,7 @@ void vTaskApp( void *pParam )
 void vTaskADC( void *pParam )
 {
     app_type* pApp = pParam;
-    TickType_t xTaskDelay = pdMS_TO_TICKS((pApp->sample_period+1) * DBG_PERIOD_MULTIPLIER);
+    TickType_t xTaskDelay = pdMS_TO_TICKS((pApp->config.sample_period+1) * DBG_PERIOD_MULTIPLIER);
     TickType_t xLastWakeTime = xTaskGetTickCount();
 
     adc_init();
@@ -260,7 +274,7 @@ void vTaskADC( void *pParam )
         if (xSemaphoreTake(pApp->semaphore_config, 0))
         {
             // Nueva configuracion
-            xTaskDelay = pdMS_TO_TICKS((pApp->sample_period+1) * DBG_PERIOD_MULTIPLIER);
+            xTaskDelay = pdMS_TO_TICKS((pApp->config.sample_period+1) * DBG_PERIOD_MULTIPLIER);
         }
 
         vTaskDelayUntil(&xLastWakeTime, xTaskDelay);
@@ -283,7 +297,7 @@ void vTaskUART( void *pParam )
     }
 }
 
-void vTaskButtons( void *pParam )
+void vTaskConfig( void *pParam )
 {
     app_type* pApp = pParam;
     const TickType_t xTaskDelay = pdMS_TO_TICKS(40UL * DBG_PERIOD_MULTIPLIER);
@@ -293,10 +307,23 @@ void vTaskButtons( void *pParam )
     debouncer_init(&pApp->button_right, 2, APP_BUTTON_PIN_RIGHT);
     debouncer_init(&pApp->button_up,    2, APP_BUTTON_PIN_UP   );
     debouncer_init(&pApp->button_down,  2, APP_BUTTON_PIN_DOWN );
+
+	Board_LED_Set(LED_2, 1);
+    pApp->config_sd_present = 1;
+	if (config_init(APP_SD_CONFIG_FILENAME, &pApp->config) < 0)
+    {
+        printf("ERROR: FATFS/SD, usando configuracion por defecto.\n\r");
+        pApp->config.sample_period = 0;
+        pApp->config_sd_present = 0;
+    }
+	Board_LED_Set(LED_2, 0);
+
+    printf("Sample period: %c\n\r", ('0'+pApp->config.sample_period));
     
     while (1)
     {
         buttons_update(pApp);
+        config_update(pApp);
 
         vTaskDelayUntil(&xLastWakeTime, xTaskDelay);
     }
