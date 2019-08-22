@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <sapi_uart.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,18 +26,18 @@ extern "C" {
  *   * 1 bit de stop
  *   * 0 bits de paridad
  */
-void uart_init( uint32_t brate );
+void uart_init( uartMap_t uart, uint32_t brate );
 
 /**
  * Escribe un byte por la UART USB.
  */
-void uart_write( uint8_t d );
+void uart_write( uartMap_t uart, uint8_t d );
 
 
 /**
  * Recibe un byte por la UART USB, devuelve false si no habia nada por recibir.
  */
-bool uart_read( uint8_t* d );
+bool uart_read( uartMap_t uart, uint8_t* d );
 
 
 #ifdef __cplusplus

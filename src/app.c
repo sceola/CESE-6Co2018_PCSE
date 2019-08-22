@@ -7,6 +7,7 @@
 #include "adc.h"
 #include "uart.h"
 #include "mpu.h"
+#include "bluetooth.h"
 #include "messages.h"
 
 
@@ -21,8 +22,9 @@ uint8_t buffer_queue_mem[APP_DATA_BUF_SIZE * APP_DATA_BUF_NMBR];
 
 
 /**
- * Tarea principal, espera que haya muestras del ADC y las envia por la UART,
- * luego espera la respuesta por UART o enciende el LED de error.
+ * Tarea principal, espera que haya muestras del ADC y las envia por la UART
+ * Bluetooth, luego espera la respuesta por Bluetooth o enciende el LED de
+ * error.
  */
 void vTaskApp( void *pParam );
 
@@ -35,12 +37,12 @@ void vTaskApp( void *pParam );
 void vTaskADC( void *pParam );
 
 /**
- * Trea de recepcion UART.  Esta escuchando la UART en caso de recibir algun
- * mensaje, para simplificar las cosas aceptamos cualquier mensaje como
- * Acknowledge de que todo esta bien y disparamos el semaforo que le notifica
- * a vTaskApp que los datos se enviaron correctamente.
+ * Trea de recepcion Bluetooth.  Esta escuchando la UART Bluetooth en caso de
+ * recibir algun mensaje, para simplificar las cosas aceptamos cualquier mensaje
+ * como ACKNOWLEDGE de que todo esta bien y disparamos el semaforo que le
+ * notifica a vTaskApp que los datos se enviaron correctamente.
  */
-void vTaskUART( void *pParam );
+void vTaskBluetooth( void *pParam );
 
 /**
  * Anti-rebote de las teclas.  En caso de que haya algun evento guarda la nueva
@@ -50,17 +52,17 @@ void vTaskUART( void *pParam );
 void vTaskConfig( void *pParam );
 
 /**
- * Solo se dispara cuando hubo un error de recepcion UART y queda encendida por
- * APP_ERROR_ONTIME.  La tarea queda trabada indefinidamente mientras no se de
- * esa condicion.
+ * Solo se dispara cuando hubo un error de recepcion Bluetooth y queda encendida
+ * por APP_ERROR_ONTIME.  La tarea queda trabada indefinidamente mientras no se
+ * de esa condicion.
  */
 void vTaskError( void *pParam );
 
 /**
  * Esta tarea lee los valores del MPU cada APP_ACCEL_TASK_PERIOD milisegundos
  * y los manda a una FIFO.  Despues la tarea principal de la aplicacion (la que
- * envia por UART) lee esto y lo usa para modificar las muestras del ADC por
- * enviar.
+ * envia por Bluetooth) lee esto y lo usa para modificar las muestras del ADC
+ * por enviar.
  */
 void vTaskMPU( void *pParam );
 
@@ -86,11 +88,11 @@ void app_update( app_type* app )
     {
         float mult = app->accel[0];
         //for (unsigned i = 0; i < APP_DATA_BUF_SIZE; ++i)
-        //    uart_write(buf[i] * mult);
+        //    bluetooth_write(buf[i] * mult);
         buffer_queue_return(&app->data_queue, buf);
 
-        const TickType_t uart_timeout = pdMS_TO_TICKS(APP_UART_TIMEOUT);
-        if (xSemaphoreTake(app->semaphore_reply, uart_timeout) != pdTRUE)
+        const TickType_t bluetooth_timeout = pdMS_TO_TICKS(APP_BLUETOOTH_TIMEOUT);
+        if (xSemaphoreTake(app->semaphore_reply, bluetooth_timeout) != pdTRUE)
         {
             // Timeout
             xSemaphoreGive(app->semaphore_error);
@@ -143,10 +145,10 @@ void adc_update( app_type* app )
     }
 }
 
-void uart_update( app_type* app )
+void bluetooth_update( app_type* app )
 {
     uint8_t data;
-    if (uart_read(&data))
+    if (bluetooth_read(&data))
     {
         // Indicamos a vTaskApp que esta todo bien.
         xSemaphoreGive(app->semaphore_reply);
@@ -214,6 +216,16 @@ void config_update( app_type* app )
 void app_init( app_type* app )
 {
     Board_Init();
+
+    // Antes que nada inicializamos los mensajes de salida por UART, esto es
+    // porque corren en su propia tarea y tienen una FIFO asociada.  Si
+    // cualquier otra rutina usara esto en el arranque se romperia todo por no
+    // estar creada la FIFO.
+    messages_init( tskIDLE_PRIORITY+5 );
+    
+    // Unicializamos el modulo bluetooth antes de todo el resto porque se usa
+    // por varias tareas en simultaneo.
+    bluetooth_init();
     
     // Periodo de muestreo al maximo y el acelerometro en 0
     app->config.sample_period = 0;
@@ -248,8 +260,8 @@ void app_init( app_type* app )
                  tskIDLE_PRIORITY+2,
                  NULL );
 
-    xTaskCreate( vTaskUART,
-                 (const char*) "Task UART",
+    xTaskCreate( vTaskBluetooth,
+                 (const char*) "Task Bluetooth",
                  configMINIMAL_STACK_SIZE,
                  app,
                  tskIDLE_PRIORITY+2,
@@ -275,8 +287,6 @@ void app_init( app_type* app )
                  app,
                  tskIDLE_PRIORITY+4,
                  NULL );
-
-    messages_init( tskIDLE_PRIORITY+5 );
 }
 
 
@@ -293,7 +303,7 @@ void vTaskApp( void *pParam )
 void vTaskADC( void *pParam )
 {
     app_type* pApp = pParam;
-    TickType_t xTaskDelay = pdMS_TO_TICKS((pApp->config.sample_period+1) * DBG_PERIOD_MULTIPLIER);
+    TickType_t xTaskDelay = pdMS_TO_TICKS((pApp->config.sample_period+1)*10 * DBG_PERIOD_MULTIPLIER);
     TickType_t xLastWakeTime = xTaskGetTickCount();
 
     adc_init();
@@ -306,24 +316,22 @@ void vTaskADC( void *pParam )
         if (xSemaphoreTake(pApp->semaphore_config, 0))
         {
             // Nueva configuracion
-            xTaskDelay = pdMS_TO_TICKS((pApp->config.sample_period+1) * DBG_PERIOD_MULTIPLIER);
+            xTaskDelay = pdMS_TO_TICKS((pApp->config.sample_period+1)*10 * DBG_PERIOD_MULTIPLIER);
         }
 
         vTaskDelayUntil(&xLastWakeTime, xTaskDelay);
     }
 }
 
-void vTaskUART( void *pParam )
+void vTaskBluetooth( void *pParam )
 {
     app_type* pApp = pParam;
     const TickType_t xTaskDelay = pdMS_TO_TICKS(10UL * DBG_PERIOD_MULTIPLIER);
     TickType_t xLastWakeTime = xTaskGetTickCount();
     
-    uart_init(115200);
-    
     while (1)
     {
-        uart_update(pApp);
+        bluetooth_update(pApp);
 
         vTaskDelayUntil(&xLastWakeTime, xTaskDelay);
     }
@@ -393,5 +401,9 @@ void vTaskMPU( void *pParam )
         mpu_get_accelerometer(accel);
         xQueueSendToBack(pApp->queue_mpu, accel, 0);
         vTaskDelay(xTaskDelay);
+
+        static uint8_t cnt = 0;
+        if (cnt++ % 2 == 0)
+            bluetooth_write(cnt);
     }
 }

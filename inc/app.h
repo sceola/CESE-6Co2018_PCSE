@@ -25,9 +25,9 @@ extern "C" {
 /// Nombre del archivo de configuracion en la SD.
 #define APP_SD_CONFIG_FILENAME  "config.bin"
 
-/// Timeout de espera de respuesta por UART en ms.
-#define APP_UART_TIMEOUT        250
-/// Duracion del LED de error en caso de no tener respuesta por UART en ms.
+/// Timeout de espera de respuesta por Bluetooth en ms.
+#define APP_BLUETOOTH_TIMEOUT   250
+/// Duracion del LED de error en caso de no tener respuesta por Bluetooth en ms.
 #define APP_ERROR_ONTIME        500
 
 /// Tiempo de actualizacion del acelerometro en ms.
@@ -45,7 +45,7 @@ extern "C" {
 #define APP_BUTTON_PIN_UP       BOARD_TEC_3  /// Tecla arriba
 #define APP_BUTTON_PIN_DOWN     BOARD_TEC_2  /// Tecla abajo
 
-/// Cuantas muestras del ADC almacenar antes de enviarlas todas por la UART.
+/// Cuantas muestras del ADC almacenar antes de enviarlas todas por Bluetooth.
 #define APP_DATA_BUF_SIZE       16
 /**
  * Cuantos buffers se crearan para almacenar muestras del ADC.
@@ -74,10 +74,10 @@ typedef struct _app_type
     // Indicacion de error para LED
     SemaphoreHandle_t   semaphore_error;
 
-    // Indicacion de espera de respuesta por UART
+    // Indicacion de espera de respuesta por Bluetooth
     SemaphoreHandle_t   semaphore_reply;
 
-    // Para la tarea que envia datos por la UART
+    // Para la tarea que envia datos por la Bluetooth
     float               accel[3];
 
     // Para la tarea del ADC
@@ -95,7 +95,7 @@ app_type;
  * Inicializa la aplicacion y crea todas las tareas:
  *   * ADC
  *   * APP
- *   * UART
+ *   * Bluetooth
  *   * Teclas
  *   * LED/Error
  */
