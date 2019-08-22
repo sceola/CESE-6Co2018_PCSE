@@ -87,8 +87,9 @@ void app_update( app_type* app )
     if (buf != NULL)
     {
         float mult = app->accel[0];
-        //for (unsigned i = 0; i < APP_DATA_BUF_SIZE; ++i)
-        //    bluetooth_write(buf[i] * mult);
+        //mult = 1.0;
+        for (unsigned i = 0; i < APP_DATA_BUF_SIZE; ++i)
+            bluetooth_write(buf[i] * mult);
         buffer_queue_return(&app->data_queue, buf);
 
         const TickType_t bluetooth_timeout = pdMS_TO_TICKS(APP_BLUETOOTH_TIMEOUT);
@@ -359,7 +360,7 @@ void vTaskConfig( void *pParam )
     Board_LED_Set(LED_2, 0);
 
     messages_print("Sample period: ");
-    char msg[2];
+    char msg[2]; // Sabemos que el periodo nunca es >9 asi que entra en un char
     msg[0] = '0' + pApp->config.sample_period;
     msg[1] = '\0';
     messages_print(msg);
@@ -401,9 +402,5 @@ void vTaskMPU( void *pParam )
         mpu_get_accelerometer(accel);
         xQueueSendToBack(pApp->queue_mpu, accel, 0);
         vTaskDelay(xTaskDelay);
-
-        static uint8_t cnt = 0;
-        if (cnt++ % 2 == 0)
-            bluetooth_write(cnt);
     }
 }

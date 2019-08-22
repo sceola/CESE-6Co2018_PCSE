@@ -36,9 +36,9 @@ extern "C" {
 /// Canal del ADC a muestrear.
 #define APP_ADC_CHANNEL         ADC_CH2
 /// Periodo minimo de muestreo (Ts = APP_ADC_MIN_RATE + 1).
-#define APP_ADC_MIN_RATE         0
+#define APP_ADC_MIN_RATE        0
 /// Periodo maximo de muestreo (Ts = APP_ADC_MIN_RATE + 1).
-#define APP_ADC_MAX_RATE        10
+#define APP_ADC_MAX_RATE        9
 
 #define APP_BUTTON_PIN_LEFT     BOARD_TEC_1  /// Tecla izquierda
 #define APP_BUTTON_PIN_RIGHT    BOARD_TEC_4  /// Tecla derecha
